@@ -1,0 +1,81 @@
+Phonology
+    Consonants:
+        /m//n//ŋ/
+        /p//pʰ//t//tʰ//k//kʰ/
+        /ts//tsʰ//tɕ//tɕʰ//tʂ//tʂʰ/
+        /f//s//ɕ//ʂ//x/
+        /l//ɻ/
+    Vowels:
+        /i//y//ɨ//ɨ˞//u//ɪ//e//ɤ//o//ə//ɛ//a//ɚ/
+
+Orthography
+    ( Next we will follow the order of: Pinyin, phone, IPA narrow transcription, devagari transcription, and if two devanagari transcriptions are given, it denotes that the second one is used at the end of a word. )
+    Initials:
+        - nasal:         m     /m/    [m]      म्
+                         n     /n/    [n]      न्
+        - plosive:       b     /p/    [p]      प्
+                         p     /pʰ/   [pʰ]     फ्
+                         d     /t/    [t]      त्
+                         t     /tʰ/   [tʰ]     थ्
+                         g     /k/    [k]      क्
+                         k     /kʰ/   [kʰ]     ख्
+        - fricative:     f     /f/    [f]      फ़्
+                         s     /s/    [s]      स्
+                         x     /ɕ/    [ɕ]      श्
+                         sh    /ʂ/    [ʂ]      ष्
+                         h     /x/    [x]      ह्
+        - affricate:     z     /ts/   [t͡s]     च्
+                         c     /tsʰ/  [t͡sʰ]    छ्
+                         j     /tɕ/   [t͡ɕ]     च्
+                         q     /tɕʰ/  [t͡ɕʰ]    छ्
+                         zh    /tʂ/   [ʈ͡ʂ]     ट्
+                         ch    /tʂʰ/  [ʈ͡ʂʰ]    ठ्
+        - lateral:       l     /l/    [l]      ल्
+                         r     /r/    [ɻ]      ञ्
+        - zero initial:  -                     र्
+    Finals:   
+        - sigle finals:  i     /i/    [i]      ई
+                         ü     /y/    [y]      ॠ
+                         u     /u/    [u]      ऊ
+                         e     /ɤ/    [ɤ̯ɤ̞]     अ
+                         o     /uo/   [wo̞]     ओ
+                         a     /a/    [ä]      आ
+        - apical finals: ï1    /ɨ/    [ɹ̩]      इ
+                         ï2    /ɨ˞/    [ɻ̩]      इ
+        - diphthongs:    ie    /ie/   [je]     ये
+                         iou   /iou/  [jo̞u̯]    यु
+                         ia    /ia/   [jä]     या
+                         iao   /iau/  [jäʊ̯]    यौ
+                         üe    /ye/   [ɥe]     ऋ
+                         uei   /uɪ/   [weɪ̯]    वे
+                         uo    /uo/   [wo̞]     ओ
+                         ua    /ua/   [wä]     वा
+                         uai   /uai/  [wäɪ̯]    वै
+                         ou    /ou/   [o̞u̯]     उ
+                         ei    /ɪ/    [ei̯]     ए
+                         ai    /ai/   [äɪ̯]     ऐ
+                         ao    /au/   [äu̯]     औ
+        - nasal finals:  in    /in/   [in]     ईन्/ईं
+                         ing   /iŋ/   [iŋ]     ईङ्/ईण
+                         ian   /iɛn/  [jɛ̠n]    यान्/यां
+                         iang  /iaŋ/  [jɑŋ]    याङ्/याण
+                         ün    /yn/   [yn]     ॠं
+                         üan   /yɛn/  [ɥæ̠n]    ऋं
+                         iong  /iuŋ/  [jʊŋ]    यों
+                         uen   /uən/  [wə̟n]    वन्/वं
+                         *ueng /uəŋ/  [wə̠ŋ]    वङ्/वण
+                         uan   /uan/  [wan]    वान्/वां
+                         uang  /uaŋ/  [wɑŋ]    वाङ्/वाण
+                         ong   /uŋ/   [ʊŋ]     ओं
+                         en    /ən/   [ə̟n]     अन्/अं
+                         eng   /əŋ/   [ə̠ŋ]     अङ्/अण
+                         an    /an/   [an]     आन्/आं
+                         ang   /aŋ/   [ɑŋ]     आङ्/आण
+        - r finals:      er    /ɚ/    [ɚ],[äɚ̯] अञ्
+                         r                     ञ्
+    Tones ( taking क and स as examples ):
+        dark flat:  क/स
+        light flat: ग/र्स
+        rising:     कक्त/सक्त
+        departing:  गक्त/र्सक्त
+        light:      कः/सः

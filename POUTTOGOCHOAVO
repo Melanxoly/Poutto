@@ -1,0 +1,111 @@
+Phonology
+    Consonants:
+        /m//n//ŋ/
+        /p//pʰ//t//tʰ//k//kʰ/
+        /ts//tsʰ//tɕ//tɕʰ//tʂ//tʂʰ/
+        /f//s//ɕ//ʂ//x/
+        /l//ɻ/
+    Vowels:
+        /i//y//ɨ//ɨ˞//u//ɪ//e//ɤ//o//ə//ɛ//a//ɚ/
+
+Orthography
+    ( Next we will follow the order of: Pinyin, latin transcription, greek transcription, phone, IPA narrow transcription )
+    Initials:
+        - nasal:         m      m      μ       /m/   [m]
+                         n      n      ν       /n/   [n]
+        - plosive:       b      b      β       /p/   [p]
+                         p      p      π       /pʰ/  [pʰ]
+                         d      d      δ       /t/   [t]
+                         t      t      τ       /tʰ/  [tʰ]
+                         g      g      γ       /k/   [k]
+                         k      c      κ       /kʰ/  [kʰ]
+        - fricative:     f      ph     φ       /f/   [f]
+                         s      cr     θ       /s/   [s]
+                         x      ch     χ       /ɕ/   [ɕ]
+                         sh     cru    θυ      /ʂ/   [ʂ]
+                                cre    θε      /ʂ/   [ʂ] ( used when before "ou", "ouno", "ougo", "au" and "uo")
+                                cri    θι      /ʂ/   [ʂ] ( used when before "eno", "ego", "a", "ano" and "ago" )
+                         h      ch     χ       /x/   [x]
+        - affricate:     z      pr     ψ       /ts/  [t͡s]
+                         c      tr     ζ       /tsʰ/ [t͡sʰ]
+                         j      g      γ       /tɕ/  [t͡ɕ]
+                         q      c      κ       /tɕʰ/ [t͡ɕʰ]
+                         zh     pru    ψυ      /tʂ/  [ʈ͡ʂ]
+                                pre    ψε      /tʂ/  [ʈ͡ʂ] ( used when before "ou", "ouno", "ougo", "au" and "uo")
+                                pri    ψι      /tʂ/  [ʈ͡ʂ] ( used when before "eno", "ego", "a", "ano" and "ago" )
+                         ch     tru    ζυ      /tʂʰ/ [ʈ͡ʂʰ]
+                                tre    ζε      /tʂʰ/ [ʈ͡ʂʰ] ( used when before "ou", "ouno", "ougo", "au" and "uo")
+                                tri    ζι      /tʂʰ/ [ʈ͡ʂʰ] ( used when before "eno", "ego", "a", "ano" and "ago" )
+        - lateral:       l      l      λ       /l/   [l]
+                         r      r      ρ       /r/   [ɻ]
+        - zero initial:  -      h      -
+    Finals:
+        - sigle finals:  i      i      ι       /i/   [i]
+                         ü      u      υ       /y/   [y]
+                         u      ou     ου      /u/   [u]
+                         e      e      ε       /ɤ/   [ɤ̯ɤ̞]
+                         o      uo     ω       /uo/  [wo̞]
+                         a      a      α       /a/   [ä]
+        - apical finals: ï1     i      ι       /ɨ/   [ɹ̩]
+                         ï2     ie     ᾳ       /ɨ˞/   [ɻ̩]
+        - diphthongs:    ie     ie     ιε      /ie/  [je]
+                         iou    iu     ιυ      /iou/ [jo̞u̯]
+                         ia     ia     ια      /ia/  [jä]
+                         iao    io     ιω      /iau/ [jäʊ̯]
+                         üe     ue     υε      /ye/  [ɥe]
+                         ui     oi     οι      /uɪ/  [weɪ̯]
+                         uo     uo     ω       /uo/  [wo̞]
+                         ua     oa     οα      /ua/  [wä]
+                         uai    oe     οη      /uai/ [wäɪ̯]
+                         ou     eo     εο      /ou/  [o̞u̯]
+                         ei     ei     ει      /ɪ/   [ei̯]
+                         ai     ae     η       /ai/  [äɪ̯]
+                         ao     au     αο      /au/  [äu̯]
+        - nasal finals:  in     ino    ινο     /in/  [in]
+                         ing    igo    ιγο     /iŋ/  [iŋ]
+                         ian    iano   ιανο    /iɛn/ [jɛ̠n]
+                         iang   iago   ιαγο    /iaŋ/ [jɑŋ]
+                         ün     uno    υνο     /yn/  [yn]
+                         üan    uano   υανο    /yɛn/ [ɥæ̠n]
+                         iong   ugo    υγο     /iuŋ/ [jʊŋ]
+                         un     ouno   ουνο    /uən/ [wə̟n]
+                         *ueng  ougo   ουγο    /uəŋ/ [wə̠ŋ]
+                         uan    oano   οανο    /uan/ [wan]
+                         uang   oago   οαγο    /uaŋ/ [wɑŋ]
+                         ong    ogo    ογο     /uŋ/  [ʊŋ]
+                         en     eno    ηνο     /ən/  [ə̟n]
+                         eng    ego    ηγο     /əŋ/  [ə̠ŋ]
+                         an     ano    ανο     /an/  [an]
+                         ang    ago    αγο     /aŋ/  [ɑŋ]
+        - r finals:      er     ir     ρο      /ɚ/   [ɚ],[äɚ̯]
+                         r      r      ρο
+    Tones ( Note that when combining with nasals, the ς of the nasal finals wll be omitted ):
+    - Latin:
+        dark flat:  pa
+        light flat: past ( at the end of a word )
+                    pas ( before a vowel)
+                    paso ( before a consonant )
+        rising:     pass ( doubling the next consonant, when followed by a vowel use -ss )
+                    pat ( at the end of a word )
+        departing:  pav ( before a vowel )
+                    pavo ( before a consonant or at the end of a word )
+        light:      pas ( at the end of a word )
+    - Greek:
+        dark flat:  πα
+                    παλον ( before a vowel )
+                    παλετο ( at the end of a word )
+        light flat: πασαι ( at the end of a word )
+                    πασ ( before a vowel)
+                    πασο ( before a consonant )
+        rising:     paσσ ( doubling the next consonant except for φ, θ, χ, ψ, ζ, and ξ, which will become φθ, σθ, χθ, πτ, στ, and κτ; when followed by a vowel use -σσ )
+                    paτος ( at the end of a word )
+        departing:  paξ ( before a vowel or at the end of a word )
+                    paξo ( before a consonant )
+        light:      paς ( at the end of a word )
+
+Example:
+    Giammout pruevobiano creuo criego "ciggo", liust laullaus biavono priavonocito crieno laest, gaucriego creuodauvo,
+    "laulliust, laulliust, criestoliavogo davo roust niust: triegevo laut mouppreou, bouvo taestoteost!"
+    Creuo hoastono, cuevo goupprues craebagopris, liagossianno priesto crievo, hicriego bouvut.
+    Pruovogo restono chiano chaesto phapriego, cheovolaest hichiaggo, criavogo criavogo chiavo chiavo deo hicisto
+    chacha davochiovo cillaes. 
