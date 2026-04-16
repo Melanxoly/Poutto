@@ -17,6 +17,7 @@ def _add_breathing_to_initial_vowel(word: str, mark: str) -> str:
     """
     if not word:
         return word
+
     # We check first two letters (case-insensitive) for the special digraphs.
     w2 = word[:2]
     w2_low = w2.lower()
@@ -184,16 +185,16 @@ PINYIN_FINAL_TO_GREEK = {
     "a": "α",
     # apical handled in _map_final
     "ie": "ῃ",
-    "iou": "υι",
-    "iu": "υι",
+    "iou": "υο",
+    "iu": "υο",
     "ia": "ᾳ",
     "iao": "ῳ",
-    "io": "υι",  # 你文件里 iao->io->ιω；yo->io 也落到 ω
+    "io": "υο",  # 你文件里 iao->io->ιω；yo->io 也落到 ω
     "üe": "υε",
     "ue": "υε",
     "ui": "οι",
     "uo": "ω",
-    "ua": "υα",
+    "ua": "οα",
     "uai": "η",
     "ou": "ευ",
     "ei": "ει",
@@ -209,8 +210,8 @@ PINYIN_FINAL_TO_GREEK = {
     "iong": "υγο",
     "un": "ουνο",
     "ueng": "ουγο",
-    "uan": "υανο",
-    "uang": "υαγο",
+    "uan": "οανο",
+    "uang": "οαγο",
     "ong": "ογο",
     "en": "ηνο",
     "eng": "ηγο",
@@ -231,7 +232,7 @@ PINYIN_FINAL_TO_GREEK_RETRO = {
     "a": "ά",
     "ui": "οῖ",
     "uo": "ῶ",
-    "ua": "υά",
+    "ua": "οά",
     "uai": "ῆ",
     "ou": "εῦ",
     "ei": "εῖ",
@@ -240,8 +241,8 @@ PINYIN_FINAL_TO_GREEK_RETRO = {
     # false nasal
     "un": "οῦνο",
     "ueng": "οῦγο",
-    "uan": "υάνο",
-    "uang": "υάγο",
+    "uan": "οάνο",
+    "uang": "οάγο",
     "ong": "όγο",
     "en": "ῆνο",
     "eng": "ῆγο",
@@ -438,7 +439,11 @@ def convert_word_greek(word: str, syll_sep: str = "-") -> str:
         greek_word = _add_breathing_to_initial_vowel(greek_word, ROUGH)
 
     elif word_initial == "":
-        greek_word = _add_breathing_to_initial_vowel(greek_word, SMOOTH)
+        # ✅ NEW POLICY: word-initial upsilon always rough breathing
+        if greek_word and greek_word[0] in ("υ", "Υ"):
+            greek_word = _add_breathing_to_initial_vowel(greek_word, ROUGH)
+        else:
+            greek_word = _add_breathing_to_initial_vowel(greek_word, SMOOTH)
 
     greek_word = unicodedata.normalize("NFC", greek_word)
     return greek_word

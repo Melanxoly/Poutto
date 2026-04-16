@@ -271,25 +271,36 @@ def _map_final(ini: str, fin: str, is_word_final: bool) -> str:
     return end if is_word_final else mid
 
 
-def _combine(init_str: str, fin_str: str, *, zero_initial: bool) -> str:
+def _combine(
+    init_str: str,
+    fin_str: str,
+    *,
+    zero_initial: bool,
+    yu_yue_as_cluster: bool = True,
+) -> str:
     """
     Combine initial string (may contain viramas) with final independent string.
-    - If final starts with vowel letter: convert to matra, attach to last consonant (remove trailing virama if any)
-    - If final starts with consonant: ensure init ends with virama, then concatenate -> conjunct
-    - Special: zero-initial + leading ऋ/ॠ => क्ष/ज्ञ
+
+    Rules:
+      - If init_str is empty (word-initial zero-initial), keep finals in independent form.
+      - If final starts with vowel letter: convert to matra and attach to last consonant (drop trailing virama if any).
+      - If final starts with consonant: ensure init ends with virama, then concatenate -> conjunct.
+      - Special (only when yu_yue_as_cluster=True):
+          zero-initial + (leading ऋ/ॠ) is rendered as consonant clusters:
+            र्+ऋ -> क्ष
+            र्+ॠ -> ज्ञ
     """
     if not fin_str:
         return init_str
 
-    first = fin_str[0]
-
-    # ✅ NEW: zero-initial + (य…/व…) should NOT be prefixed by र्.
-    # e.g. "र् + यौ" -> "यौ", "र् + वा" -> "वा"
-    if zero_initial and first in ("य", "व"):
+    # word-initial zero-initial syllable: no carrier consonant; keep independent finals
+    if init_str == "":
         return fin_str
 
-    # zero-initial special: र्+ऋ => क्ष ; र्+ॠ => ज्ञ
-    if zero_initial and first in ("ऋ", "ॠ"):
+    first = fin_str[0]
+
+    # zero-initial special clusters for yu/yue
+    if zero_initial and yu_yue_as_cluster and first in ("ऋ", "ॠ"):
         repl = "क्ष" if first == "ऋ" else "ज्ञ"
         return repl + fin_str[1:]
 
@@ -329,14 +340,32 @@ def _apply_tone_to_initial(
     ini: str, init_base: str, tone: int, *, word_initial: bool
 ) -> str:
     """
-    Apply tone effect to initial only:
-      - tone2/tone4: voice initial if possible else add र् (with word-initial placement rule)
-      - otherwise: unchanged
-    Returns an initial string (may include virama(s)).
+    Apply tone effect to (non-zero) initials only.
+
+    New rules:
+      - tone2/tone4:
+          * m/n -> ह्म / ह्न
+          * l   -> ह्ल  (both word-initial and word-internal)
+          * otherwise: voice initial if possible else add र् (word-initial placement rule)
+      - other tones: unchanged
     """
-    # zero initial: don't add extra r-marker; carrier is already र
+    # zero initial is handled in convert_word_deva (needs access to final + position)
     if ini == "":
         return init_base
+
+    if tone in (2, 4) and ini in ("m", "n"):
+        return "ह" + VIR + ("म" if ini == "m" else "न")
+
+    if tone in (2, 4) and ini == "l":
+        return "ह" + VIR + "ल"
+
+    if tone in (2, 4):
+        if init_base in _VOICED_BASE:
+            return _VOICED_BASE[init_base]
+        else:
+            return _add_r_marker(init_base, word_initial=word_initial)
+
+    return init_base
 
     if tone in (2, 4) and ini in ("m", "n"):
         return "ह" + VIR + ("म" if ini == "m" else "न")
@@ -353,45 +382,128 @@ def _apply_tone_to_initial(
 def convert_word_deva(word: str, syll_sep: str = "-") -> str:
     """
     Pinyin word -> Devanagari.
-    Tone rules (per your doc + latest clarifications):
-      - 1: none
-      - 2: voice initial or add र् (word-initial: after consonant)
-      - 3: add स्
-      - 4: voice initial or add र् (word-initial: after consonant) + add स्
-      - 0/5: add ः
+
+    Updated zero-initial + tone(2/4) rules (your latest spec):
+
+    (A) Zero-initial (ini==""):
+      - word-initial: NO र-prefix for tones other than 2/4; the syllable is just the independent final.
+      - word-internal: prefix carrier र (so consonant-leading finals form conjuncts; vowel-leading finals attach as matras).
+        Exception (yu/yue with finals starting ऋ/ॠ):
+          * tone 1/3/5: keep the old special clusters (क्ष/ज्ञ) to avoid awkward रृ/रॄ.
+          * tone 2/4: use ह्र- prefix and attach vowel matra on र (so the tone marker is visible).
+
+      - tone 2/4, word-initial:
+          * if final starts with a vowel letter (excluding leading य/व): prefix carrier र
+          * if final starts with य or व: mutate to स्य-/स्व- (prefix स् before that consonant)
+          * yu/yue (final starts ऋ/ॠ): become क्ष / ज्ञ directly (no extra र)
+
+      - tone 2/4, word-internal (zero-initial): र- prefix becomes ह्र-
+
+    (B) Non-zero initials:
+      - tone 2/4: as before (voice if possible; else r-marker), plus:
+          * l -> ह्ल
+          * m/n -> ह्म/ह्न
+      - tone 3/4 suffix tails kept as in your current system:
+          * mid: क्त
+          * word-final: 3rd->क्ती, 4th->क्ता
+      - light tone: ः
     """
     parts = re.split(rf"[{re.escape(syll_sep)}']+", word)
     parts = [p for p in parts if p]
     out_sylls: List[str] = []
-    ZWNJ = "\u200c"  # Zero Width Non-Joiner
+
+    TAIL_MID = "क्त"
+    TAIL3_END = "क्ती"
+    TAIL4_END = "क्ता"
 
     for i, raw in enumerate(parts):
         base, tone = _parse_syllable(raw)
         ini, fin = _split_initial_final(base)
         fin = _normalize_umlaut(ini, fin)
 
-        if ini not in _INIT_BASE:
-            raise ValueError(f"Unknown initial: {ini}")
+        is_word_initial = i == 0
+        is_word_final = i == len(parts) - 1
 
-        init_base = _INIT_BASE[ini]
-        fin_str = _map_final(ini, fin, is_word_final=(i == len(parts) - 1))
+        fin_str = _map_final(ini, fin, is_word_final=is_word_final)
 
-        # apply initial changes for tone
-        init_str = _apply_tone_to_initial(ini, init_base, tone, word_initial=(i == 0))
+        # ----------------------------
+        # ZERO INITIAL (special handling)
+        # ----------------------------
+        if ini == "":
+            first = fin_str[0] if fin_str else ""
 
-        # for zero initial, we sometimes need r-virama if final is consonant-leading
-        # _combine will add virama when needed; but if initial is "र" and fin begins with consonant,
-        # it will become "र्" correctly.
-        syl = _combine(init_str, fin_str, zero_initial=(ini == ""))
+            if tone in (2, 4):
+                if is_word_initial:
+                    # word-initial + tone2/4
+                    if first in ("ऋ", "ॠ"):
+                        # yu/yue special: become क्ष/ज्ञ
+                        repl = "क्ष" if first == "ऋ" else "ज्ञ"
+                        syl = repl + fin_str[1:]
+                    elif first in ("य", "व"):
+                        # y/v-leading: स्य-/स्व-
+                        syl = "स" + VIR + first + fin_str[1:]
+                    elif first in VOWEL_LETTERS:
+                        # vowel-leading: prefix carrier र
+                        syl = _combine(
+                            "र", fin_str, zero_initial=True, yu_yue_as_cluster=False
+                        )
+                    else:
+                        # should be rare; fall back to prefix र
+                        syl = _combine(
+                            "र", fin_str, zero_initial=True, yu_yue_as_cluster=False
+                        )
+                else:
+                    # word-internal + tone2/4: prefix becomes ह्र-
+                    syl = _combine(
+                        "ह" + VIR + "र",
+                        fin_str,
+                        zero_initial=True,
+                        yu_yue_as_cluster=False,
+                    )
 
-        # apply tone suffix
+            else:
+                # tone 1 / 3 / 0/5:
+                if is_word_initial:
+                    # no र-prefix at word start
+                    syl = _combine(
+                        "", fin_str, zero_initial=True, yu_yue_as_cluster=False
+                    )
+                else:
+                    # word-internal: add carrier र (including y/v-leading finals)
+                    yu_cluster = first in (
+                        "ऋ",
+                        "ॠ",
+                    )  # use clusters for yu/yue in non-2/4 tones
+                    syl = _combine(
+                        "र", fin_str, zero_initial=True, yu_yue_as_cluster=yu_cluster
+                    )
+
+        # ----------------------------
+        # NON-ZERO INITIAL
+        # ----------------------------
+        else:
+            if ini not in _INIT_BASE:
+                raise ValueError(f"Unknown initial: {ini}")
+
+            init_base = _INIT_BASE[ini]
+            init_str = _apply_tone_to_initial(
+                ini, init_base, tone, word_initial=is_word_initial
+            )
+
+            # regular combination
+            syl = _combine(
+                init_str, fin_str, zero_initial=False, yu_yue_as_cluster=False
+            )
+
+        # ----------------------------
+        # Tone suffix tails (unchanged)
+        # ----------------------------
         if tone in (0, 5):
             syl += "ः"
         elif tone == 3:
-            syl += "क्त"  # ✅ 关键：在 क्त 前加 ZWNJ
+            syl += TAIL3_END if is_word_final else TAIL_MID
         elif tone == 4:
-            syl += "क्त"  # ✅ 同上
-        # tone1 and tone2: no suffix
+            syl += TAIL4_END if is_word_final else TAIL_MID
 
         out_sylls.append(syl)
 
