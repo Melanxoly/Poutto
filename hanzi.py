@@ -1,29 +1,23 @@
 # hanzi.py
 # Latin-scheme (poutto.py) -> Pinyin(with tone digits), syllables joined by '-'
-#
-# STRICTLY aligned with your current poutto.py:
-#   - finals table including retro "false diphthongs/nasals"
-#   - tone markers: 2nd {st,s,so}, 3rd {ss,t,ggo,nno}+gemination, 4th {v,vo}, neutral {s}
-#   - tone-anchor insertion rule (same vowel set as poutto.py, notably excluding 'ú')
-#   - dropped 'h' for zero-initial syllables after 2/3/4 in non-initial position
-#
-# Implementation: precomputed surface->candidates + DP to decode each token word.
-
 import re
 from dataclasses import dataclass, replace
 from typing import Dict, List, Optional, Tuple, DefaultDict
 from collections import defaultdict
 
 # ----------------------------
-# Vowels used by poutto.py's tone-anchor logic (MUST match poutto.py _VOWELS)
+# Config: vowels in Latin-scheme surface (must include diacritics used in poutto.py)
 # ----------------------------
-VOWELS = set("aeiouéêùèà")
+VOWELS = set("aeiouüéêùèà")
 ASCII_LETTERS = set("abcdefghijklmnopqrstuvwxyz")
-GEMMABLE_FIRST = set("mnbpdtgclrc")  # could be doubled by 3rd-tone gemination
+GEMMABLE_FIRST = set(
+    "mnbpdtgclrc"
+)  # first letter that could be doubled by 3rd-tone gemination
+# (Note: we intentionally exclude 'h' from gemination; forward rules should not geminate a vowel-start syllable)
 
 # ----------------------------
-# Inverse finals mapping (match current poutto.py tables)
-# pinyin_final -> transcription_final
+# Inverse maps: transcription-final -> pinyin-final candidates
+# Built from your current poutto.py tables
 # ----------------------------
 _FINAL_MAP_STD = {
     # single
@@ -99,22 +93,28 @@ RETRO_INI_SURF = {
     "tr",
     "cr",
     "r",
-}  # transcription initials that can represent retroflex family
+}  # transcription initials that may represent retroflex family
 
 # Build: trans_final -> list of (pinyin_final, require_retro)
+# require_retro:
+#   - True  : only valid when pinyin initial is retroflex (zh/ch/sh/r) family
+#   - None  : could be used anywhere (std table)
 FinalCand = Tuple[str, Optional[bool]]
 FINAL_T2P: Dict[str, List[FinalCand]] = defaultdict(list)
 
+# std inverse
 for fin_pin, fin_tr in _FINAL_MAP_STD.items():
     FINAL_T2P[fin_tr].append((fin_pin, None))
 
+# retro inverse (requires retro)
 for fin_pin, fin_tr in _FINAL_MAP_RETRO.items():
     FINAL_T2P[fin_tr].append((fin_pin, True))
 
 # Special: retroflex apical "i" (zhi/chi/shi/ri) -> trans final 'é'
+# In your poutto.py: if pin_fin=='i' and ini in {zh,ch,sh,r} => return 'é'
 FINAL_T2P["é"].append(("i", True))
 
-# De-dup
+# De-dup candidates
 for k in list(FINAL_T2P.keys()):
     seen = set()
     uniq = []
@@ -128,11 +128,11 @@ for k in list(FINAL_T2P.keys()):
 ALL_TRANS_FINALS = sorted(FINAL_T2P.keys(), key=len, reverse=True)
 
 # ----------------------------
-# Transcription initials -> candidate pinyin initials
-# (match poutto.py _map_initial)
+# Transcription initials (surface) -> candidate pinyin initials
+# (Ambiguity resolved by final family heuristics)
 # ----------------------------
 INI_T2P_CAND: Dict[str, List[str]] = {
-    "": [""],  # dropped h => zero initial
+    "": [""],  # missing h (dropped) => zero initial
     "h": [""],  # explicit zero-initial marker
     "m": ["m"],
     "n": ["n"],
@@ -151,6 +151,7 @@ INI_T2P_CAND: Dict[str, List[str]] = {
     "cr": ["s", "sh"],  # s/sh merged
 }
 
+# For parsing, we only need these transcription initials (normalized).
 TRANS_INITIALS = sorted(INI_T2P_CAND.keys(), key=len, reverse=True)
 
 
@@ -163,6 +164,7 @@ def _tone_anchor_pos(trans: str) -> int:
         cut -= 2
     elif trans.endswith("r"):
         cut -= 1
+
     idx = -1
     for i, ch in enumerate(trans[:cut]):
         if ch in VOWELS:
@@ -182,6 +184,8 @@ def _is_vowel_start_char(ch: str) -> bool:
 
 
 def _looks_vowel_start(word: str, pos: int) -> bool:
+    # next syllable considered vowel-start if next char is a vowel (missing h)
+    # OR next char is 'h' (explicit zero-initial marker)
     if pos >= len(word):
         return False
     ch = word[pos]
@@ -189,22 +193,23 @@ def _looks_vowel_start(word: str, pos: int) -> bool:
 
 
 # ----------------------------
-# Candidate syllable record
+# Candidate syllable record used by DP
 # ----------------------------
 @dataclass(frozen=True)
 class Cand:
-    ini_surf: str
-    fin_tr: str
-    fin_pin: str
-    require_retro: Optional[bool]  # True or None
-    tone: int  # 1..5
+    ini_surf: str  # normalized transcription initial ("" means missing-h zero initial)
+    fin_tr: str  # transcription final
+    fin_pin: str  # underlying pinyin final (before y/w orthography)
+    require_retro: Optional[bool]  # True / None
+    tone: int  # 1..5 (5 neutral)
     explicit_tone: bool
     geminated_ini: bool
-    marker: str
+    marker: str  # 'none','light_s','s','so','st','ss','t','v','vo','ggo','nno'
 
 
 # ----------------------------
-# Precompute surface forms -> candidates
+# Precompute all possible syllable SURFACE forms and their Cand lists
+# (including geminated forms: first char doubled)
 # ----------------------------
 SURFACE2CANDS: Dict[str, List[Cand]] = defaultdict(list)
 
@@ -228,59 +233,225 @@ def _build_surfaces() -> None:
     for ini in TRANS_INITIALS:
         for fin_tr in ALL_TRANS_FINALS:
             for fin_pin, req_retro in FINAL_T2P[fin_tr]:
+                # If this final requires retro, only allow initials that can represent retro family
                 if req_retro is True and ini not in RETRO_INI_SURF:
                     continue
 
                 base = ini + fin_tr
+                is_nasal = base.endswith(("no", "go"))
 
-                # 1) tone=1 (no marker)
+                # 1) tone=1 (no marker), not explicit
                 _add_surface(
-                    base, Cand(ini, fin_tr, fin_pin, req_retro, 1, False, False, "none")
+                    base,
+                    Cand(
+                        ini_surf=ini,
+                        fin_tr=fin_tr,
+                        fin_pin=fin_pin,
+                        require_retro=req_retro,
+                        tone=1,
+                        explicit_tone=False,
+                        geminated_ini=False,
+                        marker="none",
+                    ),
                 )
 
-                # 2) tone=5 (neutral): append 's'
+                # 2) tone=5 (neutral/light): append 's' at end (explicit)
                 _add_surface(
                     base + "s",
-                    Cand(ini, fin_tr, fin_pin, req_retro, 5, True, False, "light_s"),
+                    Cand(
+                        ini_surf=ini,
+                        fin_tr=fin_tr,
+                        fin_pin=fin_pin,
+                        require_retro=req_retro,
+                        tone=5,
+                        explicit_tone=True,
+                        geminated_ini=False,
+                        marker="light_s",
+                    ),
                 )
 
-                # 3) tone=2: st / s / so
-                for mk, ins in (("st", "st"), ("s", "s"), ("so", "so")):
-                    surf = _insert_after_anchor(base, ins)
+                # 3) tone=2: st / s / so (explicit)
+                if is_nasal:
+                    # nasal word-medial: marker after no/go (s / so)
+                    for mk, suf in (("s", "s"), ("so", "so")):
+                        _add_surface(
+                            base + suf,
+                            Cand(
+                                ini_surf=ini,
+                                fin_tr=fin_tr,
+                                fin_pin=fin_pin,
+                                require_retro=req_retro,
+                                tone=2,
+                                explicit_tone=True,
+                                geminated_ini=False,
+                                marker=mk,
+                            ),
+                        )
+                    # nasal word-final: marker before no/go, always 'so'
+                    if base.endswith(("no", "go")):
+                        surf = base[:-2] + "so" + base[-2:]
+                        _add_surface(
+                            surf,
+                            Cand(
+                                ini_surf=ini,
+                                fin_tr=fin_tr,
+                                fin_pin=fin_pin,
+                                require_retro=req_retro,
+                                tone=2,
+                                explicit_tone=True,
+                                geminated_ini=False,
+                                marker="so",
+                            ),
+                        )
+                else:
+                    for mk, ins in (("st", "st"), ("s", "s"), ("so", "so")):
+                        surf = _insert_after_anchor(base, ins)
+                        _add_surface(
+                            surf,
+                            Cand(
+                                ini_surf=ini,
+                                fin_tr=fin_tr,
+                                fin_pin=fin_pin,
+                                require_retro=req_retro,
+                                tone=2,
+                                explicit_tone=True,
+                                geminated_ini=False,
+                                marker=mk,
+                            ),
+                        )
+
+                # 4) tone=3: ss / t (explicit), plus word-final nasal ggo/nno (explicit)
+                # ss: before vowel
+                if is_nasal:
+                    # nasal word-medial: ss after no/go
+                    surf_ss = base + "ss"
+                else:
+                    surf_ss = _insert_after_anchor(base, "ss")
+                _add_surface(
+                    surf_ss,
+                    Cand(
+                        ini_surf=ini,
+                        fin_tr=fin_tr,
+                        fin_pin=fin_pin,
+                        require_retro=req_retro,
+                        tone=3,
+                        explicit_tone=True,
+                        geminated_ini=False,
+                        marker="ss",
+                    ),
+                )
+
+                # t: word-final only (non-nasal)
+                if not is_nasal:
+                    surf_t = _insert_after_anchor(base, "t")
                     _add_surface(
-                        surf, Cand(ini, fin_tr, fin_pin, req_retro, 2, True, False, mk)
+                        surf_t,
+                        Cand(
+                            ini_surf=ini,
+                            fin_tr=fin_tr,
+                            fin_pin=fin_pin,
+                            require_retro=req_retro,
+                            tone=3,
+                            explicit_tone=True,
+                            geminated_ini=False,
+                            marker="t",
+                        ),
                     )
 
-                # 4) tone=3: ss / t + word-final nasal ggo/nno
-                surf_ss = _insert_after_anchor(base, "ss")
-                _add_surface(
-                    surf_ss, Cand(ini, fin_tr, fin_pin, req_retro, 3, True, False, "ss")
-                )
-
-                surf_t = _insert_after_anchor(base, "t")
-                _add_surface(
-                    surf_t, Cand(ini, fin_tr, fin_pin, req_retro, 3, True, False, "t")
-                )
-
+                # word-final nasal: consonant-before style => ggo / nno
                 if base.endswith("go"):
                     _add_surface(
                         base[:-2] + "ggo",
-                        Cand(ini, fin_tr, fin_pin, req_retro, 3, True, False, "ggo"),
+                        Cand(
+                            ini_surf=ini,
+                            fin_tr=fin_tr,
+                            fin_pin=fin_pin,
+                            require_retro=req_retro,
+                            tone=3,
+                            explicit_tone=True,
+                            geminated_ini=False,
+                            marker="ggo",
+                        ),
                     )
                 if base.endswith("no"):
                     _add_surface(
                         base[:-2] + "nno",
-                        Cand(ini, fin_tr, fin_pin, req_retro, 3, True, False, "nno"),
+                        Cand(
+                            ini_surf=ini,
+                            fin_tr=fin_tr,
+                            fin_pin=fin_pin,
+                            require_retro=req_retro,
+                            tone=3,
+                            explicit_tone=True,
+                            geminated_ini=False,
+                            marker="nno",
+                        ),
                     )
 
-                # 5) tone=4: v / vo
-                for mk, ins in (("v", "v"), ("vo", "vo")):
-                    surf = _insert_after_anchor(base, ins)
+                # 5) tone=4: v / vo (explicit)
+                if is_nasal:
+                    # nasal word-medial: marker after no/go
                     _add_surface(
-                        surf, Cand(ini, fin_tr, fin_pin, req_retro, 4, True, False, mk)
+                        base + "v",
+                        Cand(
+                            ini_surf=ini,
+                            fin_tr=fin_tr,
+                            fin_pin=fin_pin,
+                            require_retro=req_retro,
+                            tone=4,
+                            explicit_tone=True,
+                            geminated_ini=False,
+                            marker="v",
+                        ),
                     )
+                    _add_surface(
+                        base + "vo",
+                        Cand(
+                            ini_surf=ini,
+                            fin_tr=fin_tr,
+                            fin_pin=fin_pin,
+                            require_retro=req_retro,
+                            tone=4,
+                            explicit_tone=True,
+                            geminated_ini=False,
+                            marker="vo",
+                        ),
+                    )
+                    # nasal word-final: marker before no/go, always 'vo'
+                    if base.endswith(("no", "go")):
+                        surf = base[:-2] + "vo" + base[-2:]
+                        _add_surface(
+                            surf,
+                            Cand(
+                                ini_surf=ini,
+                                fin_tr=fin_tr,
+                                fin_pin=fin_pin,
+                                require_retro=req_retro,
+                                tone=4,
+                                explicit_tone=True,
+                                geminated_ini=False,
+                                marker="vo",
+                            ),
+                        )
+                else:
+                    for mk, ins in (("v", "v"), ("vo", "vo")):
+                        surf = _insert_after_anchor(base, ins)
+                        _add_surface(
+                            surf,
+                            Cand(
+                                ini_surf=ini,
+                                fin_tr=fin_tr,
+                                fin_pin=fin_pin,
+                                require_retro=req_retro,
+                                tone=4,
+                                explicit_tone=True,
+                                geminated_ini=False,
+                                marker=mk,
+                            ),
+                        )
 
-    # geminated variants: first letter doubled (used to infer previous tone=3 before consonant)
+    # Add geminated variants: first character doubled, used to infer previous tone=3 (before consonant)
+    # We DO NOT change the candidate's tone here; we only set geminated_ini flag on THIS syllable.
     extra: Dict[str, List[Cand]] = defaultdict(list)
     for surf, cands in SURFACE2CANDS.items():
         if not surf or not _is_consonant_start(surf):
@@ -308,18 +479,21 @@ def _build_surfaces() -> None:
 
 _build_surfaces()
 
+# Index patterns by first char for speed
 PATTERNS_BY_FIRST: DefaultDict[str, List[Tuple[str, Cand]]] = defaultdict(list)
 for surf, cands in SURFACE2CANDS.items():
     if not surf:
         continue
     PATTERNS_BY_FIRST[surf[0]].extend((surf, c) for c in cands)
 
+# Sort longer surfaces first to reduce branching
 for ch in list(PATTERNS_BY_FIRST.keys()):
     PATTERNS_BY_FIRST[ch].sort(key=lambda x: len(x[0]), reverse=True)
 
 
 # ----------------------------
-# Pinyin orthography helpers
+# Orthography: (initial, final) -> standard pinyin spelling (no tone digit)
+# (same spirit as hanzi_greek.py)
 # ----------------------------
 def _is_front_final(fin: str) -> bool:
     return (
@@ -346,6 +520,7 @@ def _is_front_final(fin: str) -> bool:
 
 
 def _spell_pinyin(initial: str, final: str) -> str:
+    # j/q/x + ü => written as u
     if initial in {"j", "q", "x"} and final.startswith("ü"):
         final = "u" + final[1:]
 
@@ -357,6 +532,7 @@ def _spell_pinyin(initial: str, final: str) -> str:
         final = "un"
 
     if not initial:
+        # i-family
         if final == "i":
             return "yi"
         if final == "in":
@@ -380,6 +556,7 @@ def _spell_pinyin(initial: str, final: str) -> str:
         if final.startswith("i"):
             return "y" + final
 
+        # ü-family
         if final == "ü":
             return "yu"
         if final == "üe":
@@ -391,6 +568,7 @@ def _spell_pinyin(initial: str, final: str) -> str:
         if final.startswith("ü"):
             return "yu" + final[1:]
 
+        # u-family
         if final == "u":
             return "wu"
         if final == "o":
@@ -424,6 +602,7 @@ def _choose_initial(ini_surf: str, fin_pin: str, require_retro: Optional[bool]) 
     if len(cands) == 1:
         return cands[0]
 
+    # pr/tr/cr: decide retro or not
     if ini_surf == "pr":
         return "zh" if require_retro is True else "z"
     if ini_surf == "tr":
@@ -432,12 +611,14 @@ def _choose_initial(ini_surf: str, fin_pin: str, require_retro: Optional[bool]) 
         return "sh" if require_retro is True else "s"
 
     front = _is_front_final(fin_pin)
-    if ini_surf == "g":
+
+    if ini_surf == "g":  # g vs j
         return "j" if front else "g"
-    if ini_surf == "c":
+    if ini_surf == "c":  # k vs q
         return "q" if front else "k"
-    if ini_surf == "ch":
+    if ini_surf == "ch":  # h vs x
         return "x" if front else "h"
+
     return cands[0]
 
 
@@ -452,10 +633,13 @@ def _valid_combo(initial: str, final: str) -> bool:
     retro = initial in {"zh", "ch", "sh", "r"}
     dental = initial in {"z", "c", "s"}
 
+    # retro/dental cannot take i-family except apical 'i'
     if (retro or dental) and final.startswith("i") and final != "i":
         return False
+    # retro/dental cannot take ü-family
     if (retro or dental) and final.startswith("ü"):
         return False
+    # retro cannot take iu/iong/ie etc
     if retro and final in {"ie", "iu", "iong", "iao", "ian", "iang"}:
         return False
     return True
@@ -482,13 +666,14 @@ def _cand_has_legal_pinyin(c: Cand) -> bool:
 
 
 # ----------------------------
-# DP decode one token word
+# DP parse a single token word into syllables (Cand sequence)
 # ----------------------------
 def latin_word_to_pinyin(word: str) -> Optional[str]:
     if not word:
         return None
     w = word.lower()
 
+    # quick filter: must contain scheme-ish letters
     if not re.search(r"[a-zéêúèà]", w):
         return None
 
@@ -513,49 +698,48 @@ def latin_word_to_pinyin(word: str) -> Optional[str]:
                 continue
 
             cost = dp[i] + 1.0
+
+            # prefer explicit tones slightly
             if not cand.explicit_tone:
                 cost += 0.2
-            if i == 0 and cand.ini_surf == "":
-                cost += 0.35
 
+            # missing 'h' at word start is unlikely (forward normally keeps it)
+            if i == 0 and cand.ini_surf == "":
+                cost += 0.3
+
+            # marker/context consistency heuristics
             is_end = j == n
             next_vowel = _looks_vowel_start(w, j)
+            is_nasal = cand.fin_tr.endswith(("no", "go"))
+
+            if cand.marker in {"st", "t", "ggo", "nno"} and not is_end:
+                cost += 0.6
 
             if cand.tone == 2:
-                if cand.marker == "st" and not is_end:
-                    cost += 1.2
                 if cand.marker == "s":
-                    if is_end:
-                        cost += 1.2
                     if not next_vowel:
-                        cost += 0.8
-                if cand.marker == "so":
+                        cost += 0.4
                     if is_end:
-                        cost += 0.8
+                        cost += 0.8  # 2nd tone word-final should be 'st'
+                elif cand.marker == "so":
                     if next_vowel:
+                        cost += 0.2
+                elif cand.marker == "st":
+                    if not is_end:
                         cost += 0.5
-
-            if cand.tone == 3:
-                if cand.marker == "ss":
-                    if is_end:
-                        cost += 1.0
-                    if not next_vowel:
-                        cost += 0.7
-                if cand.marker in {"t", "ggo", "nno"} and not is_end:
-                    cost += 1.0
 
             if cand.tone == 4:
                 if cand.marker == "v":
-                    if is_end:
-                        cost += 0.9
-                    if not next_vowel:
-                        cost += 0.7
-                if cand.marker == "vo":
-                    if (not is_end) and next_vowel:
+                    if not next_vowel or is_end:
                         cost += 0.4
+                elif cand.marker == "vo":
+                    if next_vowel and not is_end:
+                        cost += 0.2
 
             if cand.tone == 5 and not is_end:
-                cost += 0.05
+                continue  # light tone only appears at word end under your segmentation
+
+            # geminated syllable itself is rare; tiny penalty to avoid over-using
             if cand.geminated_ini:
                 cost += 0.05
 
@@ -566,7 +750,7 @@ def latin_word_to_pinyin(word: str) -> Optional[str]:
     if dp[n] >= INF or prev[n] is None:
         return None
 
-    # reconstruct (IMPORTANT: copy cands so we never mutate global cache objects)
+    # reconstruct cand list
     cands: List[Cand] = []
     cur = n
     while cur > 0:
@@ -577,20 +761,22 @@ def latin_word_to_pinyin(word: str) -> Optional[str]:
 
     # make them independent objects
     cands = [replace(c) for c in cands]
-
     # infer 3rd tone before consonant via gemination on CURRENT syllable
-    # (NEVER mutate shared/global Cand objects)
     for k in range(1, len(cands)):
         if cands[k].geminated_ini and (not cands[k - 1].explicit_tone):
             cands[k - 1] = replace(cands[k - 1], tone=3)
 
+    # emit pinyin syllables
     out = []
     for c in cands:
         ini_pin = _choose_initial(c.ini_surf, c.fin_pin, c.require_retro)
 
+        # If require_retro True, but we somehow chose non-retro, force it for pr/tr/cr
         if c.require_retro is True and c.ini_surf in {"pr", "tr", "cr"}:
             ini_pin = {"pr": "zh", "tr": "ch", "cr": "sh"}[c.ini_surf]
 
+        # phonotactic sanity: if invalid and ini_surf is pr/tr/cr and require_retro is None,
+        # try the retro option
         if (
             not _valid_combo(ini_pin, c.fin_pin)
             and c.ini_surf in {"pr", "tr", "cr"}
@@ -602,7 +788,6 @@ def latin_word_to_pinyin(word: str) -> Optional[str]:
 
         if not _valid_combo(ini_pin, c.fin_pin):
             return None
-
         syll = _spell_pinyin(ini_pin, c.fin_pin)
         out.append(f"{syll}{c.tone}")
 
@@ -613,6 +798,7 @@ def latin_word_to_pinyin(word: str) -> Optional[str]:
 # Convert full text: keep whitespace/punct; convert scheme-words
 # ----------------------------
 TOKEN_RE = re.compile(r"(\s+|[^\s]+)")
+# allowed core letters for the Latin scheme
 SCHEME_LETTERS_RE = r"A-Za-zéêúèàÉÊÚÈÀ"
 
 
@@ -632,8 +818,8 @@ def latin_text_to_pinyin(text: str) -> str:
         if not m:
             out.append(tok)
             continue
-
         pre, core, suf = m.group(1) or "", m.group(2), m.group(3) or ""
+
         converted = latin_word_to_pinyin(core)
         out.append(pre + (converted if converted is not None else core) + suf)
 

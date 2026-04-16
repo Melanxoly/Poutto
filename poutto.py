@@ -367,51 +367,76 @@ def convert_word(word: str, syll_sep: str = "-") -> str:
         next_is_vowel = sylls[i + 1]["vowel_start"] if not is_last else False
         is_nasal = s.get("is_nasal", False)
 
-        # 轻声：末尾 +s
+        # 轻声：末尾 +s（轻声只会出现在词末；鼻尾 no/go 的 s 也自然在 no/go 之后）
         if tone in (0, 5):
             outs[i] = outs[i] + "s"
             continue
 
-        # 二声：词末 st，否则 sto
+        # 二声：
+        #   - 非鼻尾：维持原规则（词末 st；词中后接元音 s；后接辅音 so）
+        #   - 鼻尾 no/go：
+        #       * 词中：标记放在 no/go 之后（后接元音 s；后接辅音 so）
+        #       * 词末：标记仍在 no/go 之前，但永远采用“词中+辅音前”形式 so
         if tone == 2:
-            if is_last:
-                # 词末：past
-                outs[i] = _insert_after_anchor(outs[i], "st")
-            else:
-                if next_is_vowel:
-                    # 词中 + 后接元音：pas
-                    outs[i] = _insert_after_anchor(outs[i], "s")
+            if is_nasal and outs[i].endswith(("no", "go")):
+                if is_last:
+                    outs[i] = outs[i][:-2] + "so" + outs[i][-2:]
                 else:
-                    # 词中 + 后接辅音：paso
-                    outs[i] = _insert_after_anchor(outs[i], "so")
+                    outs[i] = outs[i] + ("s" if next_is_vowel else "so")
+            else:
+                if is_last:
+                    # 词末：past
+                    outs[i] = _insert_after_anchor(outs[i], "st")
+                else:
+                    if next_is_vowel:
+                        # 词中 + 后接元音：pas
+                        outs[i] = _insert_after_anchor(outs[i], "s")
+                    else:
+                        # 词中 + 后接辅音：paso
+                        outs[i] = _insert_after_anchor(outs[i], "so")
             continue
 
-        # 三声：词末 t；否则倍写下一辅音，若下个是元音起始则当前插 ss
+        # 三声：
+        #   - 非鼻尾：维持原规则（词末 t；词中后接元音 ss；否则倍写下一辅音）
+        #   - 鼻尾 no/go：
+        #       * 词中且后接元音：ss 放在 no/go 之后
+        #       * 词末：标记仍在 no/go 之前，采用“词中+辅音前”形式（倍写 no/go 的辅音）=> nno/ggo
         if tone == 3:
             if is_last:
                 if is_nasal:
-                    # ✅ 鼻音尾按“词中”处理：把尾部 go/no 的辅音倍写
                     if outs[i].endswith("go"):
-                        outs[i] = outs[i][:-2] + "ggo"  # cigo -> ciggo
+                        outs[i] = outs[i][:-2] + "ggo"
                     elif outs[i].endswith("no"):
                         outs[i] = outs[i][:-2] + "nno"
                     else:
-                        # 保险：万一 is_nasal 标错，回退到原词末规则
                         outs[i] = _insert_after_anchor(outs[i], "t")
                 else:
                     outs[i] = _insert_after_anchor(outs[i], "t")
             else:
                 if next_is_vowel:
-                    outs[i] = _insert_after_anchor(outs[i], "ss")
+                    if is_nasal:
+                        outs[i] = outs[i] + "ss"
+                    else:
+                        outs[i] = _insert_after_anchor(outs[i], "ss")
                 else:
                     dup_prefix[i + 1] += 1
             continue
 
-        # 四声：下个是元音起始用 v，否则 vo
+        # 四声：
+        #   - 非鼻尾：维持原规则（词中后接元音 v；否则 vo）
+        #   - 鼻尾 no/go：
+        #       * 词中：标记放在 no/go 之后（后接元音 v；后接辅音 vo）
+        #       * 词末：标记仍在 no/go 之前，但永远采用“词中+辅音前”形式 vo
         if tone == 4:
-            outs[i] = _insert_after_anchor(
-                outs[i], "v" if (not is_last and next_is_vowel) else "vo"
-            )
+            if is_nasal and outs[i].endswith(("no", "go")):
+                if is_last:
+                    outs[i] = outs[i][:-2] + "vo" + outs[i][-2:]
+                else:
+                    outs[i] = outs[i] + ("v" if next_is_vowel else "vo")
+            else:
+                outs[i] = _insert_after_anchor(
+                    outs[i], "v" if (not is_last and next_is_vowel) else "vo"
+                )
             continue
 
         # 一声：不标
