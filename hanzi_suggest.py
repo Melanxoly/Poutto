@@ -136,12 +136,12 @@ def _pypinyin_bt_per_char_ranked(hz: str) -> List[List[Tuple[str, int, int]]]:
 
 
 def _strict_match_penalty(
-    bases: List[str], tones: List[int], hz: str
+    bases: List[str], tones: List[int], hz: str, restrict_tone: bool = True
 ) -> Optional[float]:
     """
-    If hz matches bases+tones STRICTLY, return a penalty (lower better).
-    Penalty is sum of matched reading ranks + a tiny mismatch guard for neutral.
-    Reject if match requires rank > MAX_PRON_RANK anywhere.
+    If hz matches bases (+ tones when restrict_tone=True), return a penalty (lower better).
+    Penalty is sum of matched reading ranks.
+    Reject if match requires reading rank > MAX_PRON_RANK anywhere.
     """
     bt_ranked = _pypinyin_bt_per_char_ranked(hz)
     if not bt_ranked or len(bt_ranked) != len(bases):
@@ -151,24 +151,34 @@ def _strict_match_penalty(
     for opts, ib, it in zip(bt_ranked, bases, tones):
         best_rank: Optional[int] = None
 
-        if ib == "er":
-            # allow er(2/5/0) interchange when input is 2 or 5
-            for cb, ct, rank in opts:
-                if cb != "er":
-                    continue
-                if it in (2, 5) and ct in (0, 2, 5):
-                    best_rank = rank if best_rank is None else min(best_rank, rank)
-                elif ct == it:
+        if not restrict_tone:
+            # Base-only matching (ignore tone), still prefer common readings by rank.
+            for cb, _ct, rank in opts:
+                if cb == ib:
                     best_rank = rank if best_rank is None else min(best_rank, rank)
         else:
-            if it == 5:
+            if ib == "er":
+                # allow er(2/5/0) interchange when input is 2 or 5
                 for cb, ct, rank in opts:
-                    if cb == ib and ct in (5, 0):
+                    if cb != "er":
+                        continue
+                    if it in (2, 5) and ct in (0, 2, 5):
+                        best_rank = rank if best_rank is None else min(best_rank, rank)
+                    elif ct == it:
                         best_rank = rank if best_rank is None else min(best_rank, rank)
             else:
-                for cb, ct, rank in opts:
-                    if cb == ib and ct == it:
-                        best_rank = rank if best_rank is None else min(best_rank, rank)
+                if it == 5:
+                    for cb, ct, rank in opts:
+                        if cb == ib and ct in (5, 0):
+                            best_rank = (
+                                rank if best_rank is None else min(best_rank, rank)
+                            )
+                else:
+                    for cb, ct, rank in opts:
+                        if cb == ib and ct == it:
+                            best_rank = (
+                                rank if best_rank is None else min(best_rank, rank)
+                            )
 
         if best_rank is None:
             return None
@@ -258,7 +268,9 @@ def _split_hz_by_counts(hz: str, counts: List[int]) -> Optional[List[str]]:
     return out
 
 
-def _decode_window_list(words: List[str], topk: int) -> Optional[List[str]]:
+def _decode_window_list(
+    words: List[str], topk: int, restrict_tone: bool
+) -> Optional[List[str]]:
     """
     Decode a list of pinyin words into hanzi words (same word count),
     selecting among STRICT candidates by (pron_rank_penalty + lex_penalty, then LM score).
@@ -285,7 +297,9 @@ def _decode_window_list(words: List[str], topk: int) -> Optional[List[str]]:
         cands = _dag_decode(bases_dag, topk=topk)
         for hz, lm_sc in cands:
             # IMPORTANT: strict validation always uses ORIGINAL bases_all + tones_all
-            pron_pen = _strict_match_penalty(bases_all, tones_all, hz)
+            pron_pen = _strict_match_penalty(
+                bases_all, tones_all, hz, restrict_tone=restrict_tone
+            )
             if pron_pen is None:
                 continue
 
@@ -311,21 +325,24 @@ def _decode_window_list(words: List[str], topk: int) -> Optional[List[str]]:
 
 @functools.lru_cache(maxsize=8192)
 def _decode_window_cached(
-    words: Tuple[str, ...], topk: int
+    words: Tuple[str, ...], topk: int, restrict_tone: bool
 ) -> Optional[Tuple[str, ...]]:
-    res = _decode_window_list(list(words), topk=topk)
+    res = _decode_window_list(list(words), topk=topk, restrict_tone=restrict_tone)
     return tuple(res) if res is not None else None
 
 
-def _word_strict_ok(pinyin_word: str, hanzi_word: str) -> bool:
+def _word_strict_ok(pinyin_word: str, hanzi_word: str, restrict_tone: bool) -> bool:
     parsed = _parse_word(pinyin_word)
     if parsed is None:
         return False
     bases, tones = parsed
-    return _strict_match_penalty(bases, tones, hanzi_word) is not None
+    return (
+        _strict_match_penalty(bases, tones, hanzi_word, restrict_tone=restrict_tone)
+        is not None
+    )
 
 
-def _decode_run_words(run_words: List[str]) -> List[str]:
+def _decode_run_words(run_words: List[str], restrict_tone: bool) -> List[str]:
     """
     Keep word boundaries, but use cross-boundary context:
     1) decode full run when feasible
@@ -338,7 +355,7 @@ def _decode_run_words(run_words: List[str]) -> List[str]:
     # 1) full-run decode
     if m <= FULL_RUN_MAX_WORDS:
         full_topk = min(TOPK_CAP, max(TOPK_FULL_BASE, TOPK_FULL_PER_WORD * m))
-        dec_full = _decode_window_cached(tuple(run_words), full_topk)
+        dec_full = _decode_window_cached(tuple(run_words), full_topk, restrict_tone)
         if dec_full is not None and len(dec_full) == m:
             return list(dec_full)
 
@@ -349,7 +366,7 @@ def _decode_run_words(run_words: List[str]) -> List[str]:
         if not window:
             continue
         topk = min(TOPK_CAP, max(TOPK_WINDOW_BASE, 90 * len(window)))
-        dec = _decode_window_cached(tuple(window), topk)
+        dec = _decode_window_cached(tuple(window), topk, restrict_tone)
         if dec is None:
             continue
 
@@ -361,27 +378,29 @@ def _decode_run_words(run_words: List[str]) -> List[str]:
             if idx >= m:
                 break
             w = 1.0 - abs(off - center) / denom
-            if _word_strict_ok(run_words[idx], dec[off]):
+            if _word_strict_ok(run_words[idx], dec[off], restrict_tone):
                 votes[idx][dec[off]] += w
 
     out: List[str] = []
     for i in range(m):
         if votes[i]:
             best = max(votes[i].items(), key=lambda kv: kv[1])[0]
-            if _word_strict_ok(run_words[i], best):
+            if _word_strict_ok(run_words[i], best, restrict_tone):
                 out.append(best)
                 continue
 
         # fallback: single word with a larger topk
         dec1 = _decode_window_cached(
-            (run_words[i],), min(TOPK_CAP, max(TOPK_WINDOW_BASE, 500))
+            (run_words[i],), min(TOPK_CAP, max(TOPK_WINDOW_BASE, 500, restrict_tone))
         )
         out.append(dec1[0] if dec1 is not None else run_words[i])
 
     return out
 
 
-def suggest_hanzi_text(pinyin_text: str, *args, **kwargs) -> str:
+def suggest_hanzi_text(
+    pinyin_text: str, restrict_tone: bool = True, *args, **kwargs
+) -> str:
     """
     Public API. Extra args/kwargs accepted for backward compatibility, but ignored.
     """
@@ -410,7 +429,7 @@ def suggest_hanzi_text(pinyin_text: str, *args, **kwargs) -> str:
 
     for run_idxs in runs:
         run_words = [tokens[i] for i in run_idxs]
-        decoded = _decode_run_words(run_words)
+        decoded = _decode_run_words(run_words, restrict_tone)
         for tok_i, hz in zip(run_idxs, decoded):
             out_tokens[tok_i] = hz
 

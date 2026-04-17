@@ -350,7 +350,7 @@ def syllable_info(pin: str) -> Dict:
     }
 
 
-def convert_word(word: str, syll_sep: str = "-") -> str:
+def convert_word(word: str, syll_sep: str = "-", retain_tone: bool = True) -> str:
     """
     One 'word' may contain multiple syllables, split by '-' or apostrophe.
     """
@@ -359,6 +359,12 @@ def convert_word(word: str, syll_sep: str = "-") -> str:
     sylls = [syllable_info(p) for p in parts]
 
     outs = [s["base_trans"] for s in sylls]
+
+    # Lightweight mode: do NOT add any tone markers (treat all as dark-flat).
+    # This disables all tone-driven insertions, gemination, and zero-initial 'h' dropping.
+    if not retain_tone:
+        return "".join(outs)
+
     dup_prefix = [0] * len(sylls)
 
     for i, s in enumerate(sylls):
@@ -367,7 +373,7 @@ def convert_word(word: str, syll_sep: str = "-") -> str:
         next_is_vowel = sylls[i + 1]["vowel_start"] if not is_last else False
         is_nasal = s.get("is_nasal", False)
 
-        # 轻声：末尾 +s（轻声只会出现在词末；鼻尾 no/go 的 s 也自然在 no/go 之后）
+        # 轻声：末尾 +s
         if tone in (0, 5):
             outs[i] = outs[i] + "s"
             continue

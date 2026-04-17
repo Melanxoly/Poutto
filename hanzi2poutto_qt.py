@@ -482,7 +482,7 @@ def get_scheme_forward(scheme: str):
 # ----------------------------
 # Forward: Hanzi -> Scheme text
 # ----------------------------
-def convert_hanzi(text: str, scheme: str) -> str:
+def convert_hanzi(text: str, scheme: str, keep_tone: bool = True) -> str:
     to_word, post_fmt, _ = get_scheme_forward(scheme)
     tokens = _fix_common_bad_splits(jieba.lcut(text))
     out = []
@@ -514,7 +514,7 @@ def convert_hanzi(text: str, scheme: str) -> str:
         # else:
         #     segments = split_syllables_dp(syllables, to_word)
         for seg in segments:
-            piece = to_word("-".join(seg))
+            piece = to_word("-".join(seg), retain_tone=keep_tone)
             if prev_was_word:
                 out.append(" ")
             out.append(piece)
@@ -534,6 +534,17 @@ def reverse_to_pinyin(text: str, scheme: str) -> str:
     if scheme in ("deva", "devanagari"):
         return deva_text_to_pinyin(text)
     raise ValueError(f"Unknown scheme: {scheme}")
+
+
+# ----------------------------
+# Reverse display helper
+# ----------------------------
+_TONE_DIGIT_RE = re.compile(r"([A-Za-züv:]+)[1-5]")
+
+
+def strip_pinyin_tone_digits(text: str) -> str:
+    """Remove tone digits 1-5 from pinyin syllables for display only."""
+    return _TONE_DIGIT_RE.sub(r"\1", text)
 
 
 # ----------------------------
@@ -619,6 +630,20 @@ class MainWindow(QMainWindow):
         self.cb_hanzi.toggled.connect(self.on_ref_hanzi_toggled)
         self.cb_hanzi.setVisible(False)  # only show in reverse mode
         row.addWidget(self.cb_hanzi)
+
+        # Reverse-only option: input text contains tone markers
+        self.cb_input_tone = QCheckBox("输入带声调标记文本")
+        self.cb_input_tone.setChecked(True)
+        self.cb_input_tone.toggled.connect(self.on_input_tone_toggled)
+        self.cb_input_tone.setVisible(False)  # only show in reverse mode
+        row.addWidget(self.cb_input_tone)
+
+        # Forward-only option: keep tone markers in the transliteration output
+        self.cb_keep_tone = QCheckBox("保留声调标记")
+        self.cb_keep_tone.setChecked(True)
+        self.cb_keep_tone.toggled.connect(self.on_keep_tone_toggled)
+        self.cb_keep_tone.setVisible(True)  # only show in forward mode
+        row.addWidget(self.cb_keep_tone)
 
         row.addWidget(QLabel("方案："))
         self.scheme_group = QButtonGroup(self)
@@ -717,11 +742,19 @@ class MainWindow(QMainWindow):
             self.inp.setPlaceholderText("请在此处输入文本……")
         else:
             self.lbl_in.setText("输入（转写文本）：")
-            self.lbl_out.setText("输出（带声调拼音）：")
+            self.lbl_out.setText(
+                "输出（带声调拼音）："
+                if self.cb_input_tone.isChecked()
+                else "输出（拼音）："
+            )
             self.inp.setPlaceholderText("请在此处输入文本……")
 
-        # Show checkbox only in reverse mode; checked state is remembered automatically
+        # Show checkboxes only in reverse mode; checked state is remembered automatically
         self.cb_hanzi.setVisible(reverse)
+        self.cb_input_tone.setVisible(reverse)
+
+        # Keep-tone checkbox only in forward mode; state is remembered automatically
+        self.cb_keep_tone.setVisible(not reverse)
 
         # Reference box only when reverse + checked
         show_ref = reverse and self.cb_hanzi.isChecked()
@@ -763,11 +796,62 @@ class MainWindow(QMainWindow):
         try:
             from hanzi_suggest import suggest_hanzi_text
 
-            pinyin_out = self.out.toPlainText().strip()
+            pinyin_full = getattr(self, "_last_pinyin_full", "")
+            pinyin_out = (
+                pinyin_full.strip() if pinyin_full else self.out.toPlainText().strip()
+            )
             if pinyin_out:
-                self.out_hanzi.setPlainText(suggest_hanzi_text(pinyin_out))
+                self.out_hanzi.setPlainText(
+                    suggest_hanzi_text(pinyin_out, restrict_tone=False)
+                )
         except Exception as e:
             self.out_hanzi.setPlainText(f"[参考汉字生成失败: {type(e).__name__}: {e}]")
+
+    def on_input_tone_toggled(self, checked: bool):
+        # Only meaningful in reverse mode; state is remembered even when hidden.
+        if not self.is_reverse():
+            return
+
+        # Update output label
+        self.lbl_out.setText("输出（带声调拼音）：" if checked else "输出（拼音）：")
+
+        # If we have cached full pinyin, update display without re-running conversion
+        full = getattr(self, "_last_pinyin_full", "")
+        if full:
+            shown = full if checked else strip_pinyin_tone_digits(full)
+
+            viewport_w = self.out.viewport().width()
+            safety = 80
+            max_px = max(120, viewport_w - safety)
+            shown_wrapped = wrap_only_at_spaces_qt(shown, self.out.font(), max_px)
+            self.out.setPlainText(shown_wrapped)
+
+            # Reference Hanzi (when enabled): do NOT restrict tone
+            if self.cb_hanzi.isChecked():
+                try:
+                    from hanzi_suggest import suggest_hanzi_text
+
+                    hz_ref = suggest_hanzi_text(full, restrict_tone=False)
+                except Exception as e:
+                    hz_ref = f"[参考汉字生成失败: {type(e).__name__}: {e}]"
+                vp = self.out_hanzi.viewport().width()
+                max_px2 = max(120, vp - safety)
+                self.out_hanzi.setPlainText(
+                    wrap_only_at_spaces_qt(hz_ref, self.out_hanzi.font(), max_px2)
+                )
+            return
+
+        # Otherwise, if there is input, rerun conversion
+        if self.inp.toPlainText().strip():
+            self.do_convert()
+
+    def on_keep_tone_toggled(self, checked: bool):
+        # Only affects forward mode. When hidden (reverse mode), keep state but do nothing.
+        if self.is_reverse():
+            return
+        # If there is input text, refresh output
+        if self.inp.toPlainText().strip():
+            self.do_convert()
 
     def do_convert(self):
         try:
@@ -781,11 +865,23 @@ class MainWindow(QMainWindow):
             if not reverse:
                 self.lbl_in.setText("输入（汉字）：")
                 self.lbl_out.setText("输出（转写）：")
-                txt = convert_hanzi(src, scheme=scheme)
+                txt = convert_hanzi(
+                    src, scheme=scheme, keep_tone=self.cb_keep_tone.isChecked()
+                )
             else:
                 self.lbl_in.setText("输入（转写文本）：")
-                self.lbl_out.setText("输出（带声调拼音）：")
-                txt = reverse_to_pinyin(src, scheme=scheme)
+                self.lbl_out.setText(
+                    "输出（带声调拼音）："
+                    if self.cb_input_tone.isChecked()
+                    else "输出（拼音）："
+                )
+                full = reverse_to_pinyin(src, scheme=scheme)
+                self._last_pinyin_full = full
+                txt = (
+                    full
+                    if self.cb_input_tone.isChecked()
+                    else strip_pinyin_tone_digits(full)
+                )
 
             # wrap only at spaces for all outputs
             viewport_w = self.out.viewport().width()
@@ -802,7 +898,9 @@ class MainWindow(QMainWindow):
                 try:
                     from hanzi_suggest import suggest_hanzi_text
 
-                    hz_ref = suggest_hanzi_text(txt)
+                    hz_ref = suggest_hanzi_text(
+                        self._last_pinyin_full, restrict_tone=False
+                    )
                 except Exception as e:
                     hz_ref = f"[参考汉字生成失败: {type(e).__name__}: {e}]"
                 self.out_hanzi.setPlainText(hz_ref)

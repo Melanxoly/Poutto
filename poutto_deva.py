@@ -367,19 +367,13 @@ def _apply_tone_to_initial(
 
     return init_base
 
-    if tone in (2, 4) and ini in ("m", "n"):
-        return "ह" + VIR + ("म" if ini == "m" else "न")
 
-    if tone in (2, 4):
-        if init_base in _VOICED_BASE:
-            return _VOICED_BASE[init_base]
-        else:
-            return _add_r_marker(init_base, word_initial=word_initial)
-
-    return init_base
-
-
-def convert_word_deva(word: str, syll_sep: str = "-") -> str:
+def convert_word_deva(
+    word: str,
+    syll_sep: str = "-",
+    *,
+    retain_tone: bool = True,
+) -> str:
     """
     Pinyin word -> Devanagari.
 
@@ -418,6 +412,8 @@ def convert_word_deva(word: str, syll_sep: str = "-") -> str:
 
     for i, raw in enumerate(parts):
         base, tone = _parse_syllable(raw)
+        if not retain_tone:
+            tone = 1
         ini, fin = _split_initial_final(base)
         fin = _normalize_umlaut(ini, fin)
 

@@ -17,7 +17,6 @@ def _add_breathing_to_initial_vowel(word: str, mark: str) -> str:
     """
     if not word:
         return word
-
     # We check first two letters (case-insensitive) for the special digraphs.
     w2 = word[:2]
     w2_low = w2.lower()
@@ -345,7 +344,9 @@ def syllable_info_greek(pin: str) -> Dict:
     }
 
 
-def convert_word_greek(word: str, syll_sep: str = "-") -> str:
+def convert_word_greek(
+    word: str, syll_sep: str = "-", *, retain_tone: bool = True
+) -> str:
     parts = re.split(rf"[{re.escape(syll_sep)}']+", word)
     parts = [p for p in parts if p]
     sylls = [syllable_info_greek(p) for p in parts]
@@ -358,6 +359,21 @@ def convert_word_greek(word: str, syll_sep: str = "-") -> str:
     word_initial = first_ini  # "" or "h" or others
 
     outs = [s["base_trans"] for s in sylls]
+
+    # Lightweight mode: remove all tone tails; keep only base syllables + breathing.
+    if not retain_tone:
+        greek_word = "".join(outs)
+        if word_initial == "h":
+            if greek_word.startswith("χ"):
+                greek_word = greek_word[1:]
+            greek_word = _add_breathing_to_initial_vowel(greek_word, ROUGH)
+        elif word_initial == "":
+            if greek_word and greek_word[0] in ("υ", "Υ"):
+                greek_word = _add_breathing_to_initial_vowel(greek_word, ROUGH)
+            else:
+                greek_word = _add_breathing_to_initial_vowel(greek_word, SMOOTH)
+        return unicodedata.normalize("NFC", greek_word)
+
     dup_prefix = [0] * len(sylls)
 
     for i, s in enumerate(sylls):

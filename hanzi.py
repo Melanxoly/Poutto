@@ -803,25 +803,28 @@ SCHEME_LETTERS_RE = r"A-Za-zéêúèàÉÊÚÈÀ"
 
 
 def latin_text_to_pinyin(text: str) -> str:
+    """
+    Convert full text: preserve whitespace/punctuation;
+    convert any contiguous Latin-scheme letter run, even when glued to punctuation like quotes.
+    """
+    # allowed core letters for the Latin scheme (same as before)
+    letter_re = SCHEME_LETTERS_RE
+
+    # Tokenize into: whitespace | scheme-letter-run | single char (punct, quote, etc.)
+    pattern = re.compile(rf"(\s+|[{letter_re}]+|.)")
+
     out = []
-    for tok in TOKEN_RE.findall(text):
+    for m in pattern.finditer(text):
+        tok = m.group(0)
         if tok.isspace():
             out.append(tok)
             continue
 
-        m = re.fullmatch(
-            rf"([^0-9{SCHEME_LETTERS_RE}]+)?"
-            rf"([{SCHEME_LETTERS_RE}]+)"
-            rf"([^0-9{SCHEME_LETTERS_RE}]+)?",
-            tok,
-        )
-        if not m:
+        if re.fullmatch(rf"[{letter_re}]+", tok):
+            converted = latin_word_to_pinyin(tok)
+            out.append(converted if converted is not None else tok)
+        else:
             out.append(tok)
-            continue
-        pre, core, suf = m.group(1) or "", m.group(2), m.group(3) or ""
-
-        converted = latin_word_to_pinyin(core)
-        out.append(pre + (converted if converted is not None else core) + suf)
 
     return "".join(out)
 
